@@ -1,0 +1,384 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#08090b">
+  <title>恶魔轮盘 | Devil's Roulette</title>
+  <link rel="stylesheet" href="style.css?v=20">
+</head>
+  <body>
+    <div id="app">
+      <div id="scene-2d" class="scene-2d" aria-hidden="true">
+        <canvas id="game-canvas"></canvas>
+      </div>
+      <div id="hit-flash" aria-hidden="true"></div>
+
+    <!-- 首页 -->
+    <div id="home-screen" class="screen active">
+      <div class="home-backdrop" aria-hidden="true">
+        <div class="home-orbit orbit-one"></div>
+        <div class="home-orbit orbit-two"></div>
+        <div class="home-crosshair"></div>
+      </div>
+      <div class="home-container">
+        <div class="brand-lockup">
+          <div class="brand-seal"><span>06</span></div>
+          <span class="brand-overline">THE LAST CHAMBER</span>
+        </div>
+        <h1 class="game-title">恶魔轮盘</h1>
+        <p class="game-subtitle">DEVIL'S ROULETTE <span>/</span> HIGH STAKES</p>
+        <div class="title-rule"><span></span><i></i><span></span></div>
+
+        <div class="mode-buttons">
+          <button id="btn-single" class="btn mode-card mode-card-primary">
+            <span class="btn-icon icon-solo">01</span>
+            <span class="mode-card-copy">
+              <strong>单人模式</strong>
+              <small>挑战 AI 对手</small>
+            </span>
+            <span class="mode-arrow">↗</span>
+          </button>
+          <button id="btn-multi" class="btn mode-card mode-card-secondary">
+            <span class="btn-icon icon-duo">02</span>
+            <span class="mode-card-copy">
+              <strong>双人联机</strong>
+              <small>局域网对战</small>
+            </span>
+            <span class="mode-arrow">↗</span>
+          </button>
+        </div>
+
+        <button id="btn-skins" class="btn btn-small rules-entry"><span>外观 · 皮肤</span><b>◈</b></button>
+        <button id="btn-rules" class="btn btn-small rules-entry"><span>查看游戏规则</span><b>⌘</b></button>
+        <div class="home-footer"><span>LOCAL TABLE // 2 PLAYERS</span><span>NOCTURNE EDITION</span></div>
+      </div>
+    </div>
+
+    <!-- 联机模式选择 -->
+    <div id="lobby-screen" class="screen">
+      <div class="lobby-container panel-shell">
+        <div class="screen-kicker">NETWORK TABLE / 02</div>
+        <h2>局域网联机</h2>
+        <p class="screen-intro">在同一局域网内建立一张只属于你们的牌桌。</p>
+
+        <div class="lobby-options">
+          <button id="btn-create" class="btn btn-primary"><span>创建房间</span><small>成为房主</small></button>
+          <button id="btn-join" class="btn btn-secondary"><span>加入房间</span><small>输入房间 ID</small></button>
+        </div>
+
+        <div id="join-form" class="join-form hidden">
+          <label for="input-player-name">CALLSIGN <em>OPTIONAL</em></label>
+          <input type="text" id="input-player-name" placeholder="输入昵称（可选）" maxlength="12" autocomplete="off">
+          <div class="room-list-head">
+            <span>AVAILABLE ROOMS</span>
+            <button id="btn-refresh-rooms" class="btn btn-small">刷新 <span>↻</span></button>
+          </div>
+          <div id="room-list" class="room-list">
+            <div class="room-list-empty">正在获取房间列表…</div>
+          </div>
+        </div>
+
+        <button id="btn-back-home" class="btn btn-small back-entry">← 返回首页</button>
+      </div>
+    </div>
+
+    <!-- 等待房间 -->
+    <div id="waiting-screen" class="screen">
+      <div class="waiting-container panel-shell">
+        <div class="screen-kicker">ROOM OPEN / WAITING</div>
+        <div class="waiting-orb" aria-hidden="true"><span></span></div>
+        <h2>等待玩家加入</h2>
+        <div class="room-info">
+          <span class="room-label">ROOM ID</span>
+          <strong id="room-id-display" class="room-code"></strong>
+          <p class="hint">让另一位玩家输入房间 ID 加入牌桌</p>
+          <p class="hint" id="room-config"></p>
+        </div>
+        <div class="waiting-status"><span></span>正在监听局域网连接</div>
+        <button id="btn-leave-room" class="btn btn-small back-entry">← 离开房间</button>
+      </div>
+    </div>
+
+    <!-- 游戏主界面 -->
+    <div id="game-screen" class="screen">
+      <div class="game-world">
+        <div class="game-container">
+          <header class="game-header">
+            <div class="header-brand">
+              <span class="live-dot"></span>
+              <div>
+                <strong>恶魔轮盘</strong>
+                <span>NOCTURNE TABLE / LIVE</span>
+              </div>
+            </div>
+            <div class="turn-indicator">
+              <span class="turn-kicker">CURRENT TURN</span>
+              <strong class="turn-text" id="turn-text">你的回合</strong>
+            </div>
+            <div class="round-readout">
+              <span class="readout-label">CHAMBERS LEFT</span>
+              <strong class="bullets-remaining" id="bullets-remaining">剩余: 6</strong>
+              <button id="sound-toggle" class="sound-toggle" type="button" aria-pressed="true" title="关闭音效">
+                <span class="sound-toggle-glyph" aria-hidden="true">◒</span>
+                <span class="sound-toggle-label">音效开</span>
+              </button>
+            </div>
+          </header>
+
+          <div class="arena-layout">
+            <aside class="player-info player-left" data-player="1">
+              <div class="player-card-head">
+                <span class="player-kicker">OPPONENT / ENEMY</span>
+                <span class="turn-lamp"></span>
+              </div>
+              <div class="player-identity">
+                <div class="player-avatar avatar-enemy" aria-hidden="true">
+                  <span class="avatar-back"></span><span class="avatar-head"></span><span class="avatar-visor"></span><span class="avatar-body"></span>
+                </div>
+                <div>
+                  <div class="player-name" id="player1-name">AI</div>
+                  <span class="player-caption">CONTESTANT 02</span>
+                </div>
+              </div>
+              <div class="health-heading"><span>VITALITY</span><span class="health-text" id="player1-health-text">HP: 2/2</span></div>
+              <div class="health-bar"><div class="health-fill" id="player1-health"></div></div>
+              <div class="life-pips" id="player1-lives" aria-label="对手生命值"><i class="active"></i><i class="active"></i></div>
+              <div class="player-note"><span></span>WATCHING YOUR MOVE</div>
+            </aside>
+
+            <main class="fps-viewport" aria-label="俯视牌桌">
+              <div class="aim-hint" id="aim-hint">等待对局开始…</div>
+            </main>
+          </div>
+
+          <section class="game-dock">
+            <div class="items-panel">
+              <div class="dock-heading"><span>POCKET LOADOUT</span><small>USE ONE / TURN</small></div>
+              <div class="items-bar" id="items-bar">
+                <div class="item-slot" data-item="peek" title="看破：查看下一发子弹" role="button" tabindex="0">
+                  <span class="item-index">01</span><div class="item-icon item-icon-peek">◉</div><div class="item-name">看破</div><small>PEEK</small><span class="item-count"></span>
+                </div>
+                <div class="item-slot" data-item="power" title="双倍威力：下一发实弹伤害翻倍（本回合内有效）" role="button" tabindex="0">
+                  <span class="item-index">02</span><div class="item-icon item-icon-power">×2</div><div class="item-name">双倍威力</div><small>DOUBLE</small><span class="item-count"></span>
+                </div>
+                <div class="item-slot" data-item="shield" title="护盾：抵挡一次伤害" role="button" tabindex="0">
+                  <span class="item-index">03</span><div class="item-icon item-icon-shield">◇</div><div class="item-name">护盾</div><small>SHIELD</small><span class="item-count"></span>
+                </div>
+                <div class="item-slot" data-item="eject" title="退蛋：退出一发子弹" role="button" tabindex="0">
+                  <span class="item-index">04</span><div class="item-icon item-icon-eject">⏏</div><div class="item-name">退蛋</div><small>EJECT</small><span class="item-count"></span>
+                </div>
+              </div>
+            </div>
+
+            <div class="player-panel" id="player-panel">
+              <div class="dock-heading"><span>YOU / SELF</span><small>VITALITY</small></div>
+              <div class="player-panel-row">
+                <div class="player-avatar avatar-you" aria-hidden="true">
+                  <span class="avatar-back"></span><span class="avatar-head"></span><span class="avatar-visor"></span><span class="avatar-body"></span>
+                </div>
+                <div class="player-panel-info">
+                  <div class="player-panel-name" id="panel-name">你</div>
+                  <span class="player-panel-caption">CONTESTANT SELF</span>
+                  <div class="panel-health-heading">
+                    <span>VITALITY</span>
+                    <span class="health-text" id="panel-health-text">HP: 2/2</span>
+                  </div>
+                  <div class="health-bar"><div class="health-fill" id="panel-health"></div></div>
+                  <div class="life-pips" id="panel-lives" aria-label="我的生命值"><i class="active"></i><i class="active"></i></div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- 游戏日志 -->
+          <section class="game-log" id="game-log">
+            <div class="log-title" id="log-drag-handle" title="按住拖动"><span>对局记录</span><small>EVENT STREAM / LAST 10</small><button id="btn-log-toggle" class="log-toggle" title="最小化" aria-label="最小化">−</button></div>
+            <div class="log-content" id="log-content"></div>
+          </section>
+        </div>
+      </div>
+    </div>
+
+    <!-- 结算界面 -->
+    <div id="result-screen" class="screen">
+      <div class="result-backdrop" aria-hidden="true"><span></span><i></i></div>
+      <div class="result-container">
+        <div class="result-kicker">TABLE CLOSED / FINAL RESULT</div>
+        <div class="result-icon" id="result-icon"></div>
+        <h2 id="result-title"></h2>
+        <p id="result-desc"></p>
+        <div class="result-rule"></div>
+        <div class="result-buttons">
+          <button id="btn-restart" class="btn btn-primary">再来一局 <span>↗</span></button>
+          <button id="btn-back-result" class="btn btn-secondary">返回首页</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 对战配置弹窗 -->
+        <div id="config-modal" class="modal hidden">
+      <div class="modal-content compact-modal">
+        <div class="modal-kicker">TABLE CONFIG / LOADOUT</div>
+        <h2 id="config-title">对战配置</h2>
+        <div id="cfg-name-row" class="setting-row hidden">
+          <span class="setting-label">昵称<small>CALLSIGN OPTIONAL</small></span>
+          <input type="text" id="cfg-name" maxlength="12" placeholder="输入昵称" autocomplete="off" class="config-input">
+        </div>
+        <div id="cfg-mode-row" class="setting-row hidden">
+          <span class="setting-label">游戏模式<small>GAME MODE</small></span>
+          <div class="cfg-mode-group">
+            <button type="button" id="cfg-mode-normal" class="cfg-mode-btn" data-mode="normal">普通模式<small>按配置发放道具</small></button>
+            <button type="button" id="cfg-mode-gamble" class="cfg-mode-btn" data-mode="gamble">赌局模式<small>4 卡槽 · 换弹抽 2 个</small></button>
+          </div>
+        </div>
+        <div class="config-panel">
+          <div id="cfg-items-section">
+          <div class="setting-row">
+            <span class="setting-label">看破<small>PEEK</small></span>
+            <div class="stepper">
+              <button id="cfg-peek-minus" class="stepper-btn" aria-label="减少看破">−</button>
+              <strong id="cfg-peek-value">1</strong>
+              <button id="cfg-peek-plus" class="stepper-btn" aria-label="增加看破">+</button>
+            </div>
+          </div>
+          <div class="setting-row">
+            <span class="setting-label">护盾<small>SHIELD</small></span>
+            <div class="stepper">
+              <button id="cfg-shield-minus" class="stepper-btn" aria-label="减少护盾">−</button>
+              <strong id="cfg-shield-value">1</strong>
+              <button id="cfg-shield-plus" class="stepper-btn" aria-label="增加护盾">+</button>
+            </div>
+          </div>
+          <div class="setting-row">
+            <span class="setting-label">退蛋<small>EJECT</small></span>
+            <div class="stepper">
+              <button id="cfg-eject-minus" class="stepper-btn" aria-label="减少退蛋">−</button>
+              <strong id="cfg-eject-value">1</strong>
+              <button id="cfg-eject-plus" class="stepper-btn" aria-label="增加退蛋">+</button>
+            </div>
+          </div>
+          <div class="setting-row">
+            <span class="setting-label">双倍威力<small>DOUBLE</small></span>
+            <div class="stepper">
+              <button id="cfg-power-minus" class="stepper-btn" aria-label="减少双倍威力">−</button>
+              <strong id="cfg-power-value">1</strong>
+              <button id="cfg-power-plus" class="stepper-btn" aria-label="增加双倍威力">+</button>
+            </div>
+          </div>
+          </div>
+          <div class="setting-row">
+            <span class="setting-label">初始血量<small>STARTING HP</small></span>
+            <div class="stepper">
+              <button id="cfg-hp-minus" class="stepper-btn" aria-label="减少血量">−</button>
+              <strong id="cfg-hp-value">2</strong>
+              <button id="cfg-hp-plus" class="stepper-btn" aria-label="增加血量">+</button>
+            </div>
+          </div>
+        </div>
+        <div class="config-summary">道具合计 <strong id="cfg-item-total">4</strong> · 血量 <strong id="cfg-hp-total">2</strong></div>
+        <button id="btn-config-confirm" class="btn btn-primary">开始游戏 <span>↗</span></button>
+        <button id="btn-config-cancel" class="btn btn-secondary">取消</button>
+      </div>
+    </div>
+
+    <!-- 游戏规则弹窗 -->
+    <div id="rules-modal" class="modal hidden">
+      <div class="modal-content">
+        <div class="modal-kicker">FIELD MANUAL / 01</div>
+        <h2>游戏规则</h2>
+        <div class="rules-text">
+          <p><strong>基础设定：</strong>六孔左轮，每轮随机装入4~6发子弹，实弹与空弹数量相差不超过1发</p>
+          <p><strong>血量：</strong>双方初始2点HP</p>
+          <p><strong>胜利条件：</strong>对手HP归零</p>
+          <hr>
+          <p><strong>操作方式（瞄准射击）：</strong></p>
+          <ul>
+            <li>回合开始点击桌面上的枪<strong>拿起它</strong>，随后把枪口对准目标再开枪</li>
+            <li>枪口对准<strong>对手</strong>开枪：实弹对手扣1HP，空弹轮到对手回合</li>
+            <li>枪口对准<strong>自己</strong>开枪：空弹则继续自己的回合，实弹则自己扣1HP并轮到对手</li>
+            <li><strong>没有对准目标开枪会打偏</strong>：实弹也不造成伤害，并轮到对手回合</li>
+            <li><strong>使用道具：</strong>每回合限用1个（需先拿起枪）</li>
+          </ul>
+          <p><strong>子弹全部打完自动重新装填</strong>，进入下一循环</p>
+          <hr>
+          <p><strong>道具说明：</strong></p>
+          <ul>
+            <li>◉ <strong>看破：</strong>查看下一发子弹</li>
+            <li>×2 <strong>双倍威力：</strong>自己下一发实弹伤害翻倍（仅本回合内有效，可击穿护盾）</li>
+            <li>◇ <strong>护盾：</strong>抵挡一次伤害</li>
+            <li>⏏ <strong>退蛋：</strong>主动退出一发子弹，并查看实/空弹，继续你的回合</li>
+            <li>⚔ <strong>对决（赌局模式）：</strong>进入对决，先开枪者胜，可造成 1~4 点伤害</li>
+            <li>◐ <strong>人格面具（赌局模式）：</strong>本回合内对自己射击一次，空弹获得「俄耳甫斯」（未自射则失效）</li>
+            <li>♪ <strong>俄耳甫斯：</strong>使用后连续行动两个回合</li>
+          </ul>
+        </div>
+        <button id="btn-close-rules" class="btn btn-primary">知道了</button>
+      </div>
+    </div>
+
+    <!-- 外观 / 皮肤弹窗 -->
+    <div id="skins-modal" class="modal hidden">
+      <div class="modal-content">
+        <div class="modal-kicker">WARDROBE / CUSTOMIZE</div>
+        <h2>外观选择</h2>
+        <p class="screen-intro">角色、枪械、地图与牌桌均可替换；在 client/assets/skins/ 对应分类下放入皮肤文件夹即可。</p>
+        <div id="skins-panel" class="skins-panel"></div>
+        <button id="btn-close-skins" class="btn btn-primary">确定</button>
+      </div>
+    </div>
+
+    <!-- 提示弹窗 -->
+    <div id="toast" class="toast hidden"></div>
+
+    <!-- 赌局模式：抽取道具 -->
+    <div id="draw-modal" class="modal hidden">
+      <div class="modal-content draw-content">
+        <div class="modal-kicker">DRAW PHASE / RELOAD BONUS</div>
+        <h2>抽取道具</h2>
+        <p class="screen-intro" id="draw-hint">新子弹装填完毕，从牌堆中抽取 2 个道具</p>
+        <div id="draw-cards" class="draw-cards"></div>
+        <div id="draw-message" class="draw-message"></div>
+      </div>
+    </div>
+
+    <!-- 对决卡片：对决界面 -->
+    <div id="duel-overlay" class="duel-overlay hidden">
+      <div class="duel-stage" id="duel-stage-label">准备对决</div>
+      <div class="duel-countdown" id="duel-countdown">3</div>
+      <div class="duel-prompt" id="duel-prompt"></div>
+      <div class="duel-result" id="duel-result"></div>
+    </div>
+
+    <!-- 看破结果弹窗 -->
+    <div id="peek-modal" class="modal hidden">
+      <div class="modal-content compact-modal">
+        <div class="modal-kicker">INTEL ACQUIRED / NEXT CHAMBER</div>
+        <h2>看破结果</h2>
+        <div class="peek-result" id="peek-result"></div>
+        <button id="btn-close-peek" class="btn btn-primary">确定</button>
+      </div>
+    </div>
+
+    <!-- 装填弹药 -->
+    <div id="ammo-modal" class="modal hidden">
+      <div class="modal-content ammo-content">
+        <div class="modal-kicker">CYLINDER RESET / NEW LOAD</div>
+        <h2>装填弹药</h2>
+        <div class="ammo-info">
+          <div class="ammo-type ammo-live"><span class="ammo-dot"></span><small>实弹</small><strong id="ammo-live-count">0</strong><em>LIVE</em></div>
+          <div class="ammo-type ammo-empty"><span class="ammo-dot"></span><small>空弹</small><strong id="ammo-empty-count">0</strong><em>BLANK</em></div>
+        </div>
+        <div class="loading-track"><div class="loading-fill" id="loading-fill"></div></div>
+        <p class="hint">正在装填，牌桌即将开放...</p>
+      </div>
+    </div>
+  </div>
+
+  <script src="audio.js?v=1"></script>
+  <script src="skins.js?v=3"></script>
+  <script src="custom-skins.js?v=3"></script>
+  <script src="game2d.js?v=21"></script>
+  <script src="game.js?v=21"></script>
+</body>
+</html>

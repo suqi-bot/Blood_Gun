@@ -1,0 +1,18 @@
+# Node
+node_modules/
+
+# 构建产物
+dist/
+
+# 本地工具
+.mimocode/
+
+# 日志
+*.log
+
+# 系统文件
+Thumbs.db
+.DS_Store
+
+# Ƥ������
+client/assets/skins/.cutout_backup/
