@@ -150,6 +150,15 @@
     lose() {
       tone({ frequency: 220, toFrequency: 70, duration: 0.6, gain: 0.12, type: 'sawtooth' });
       noise({ frequency: 180, duration: 0.35, gain: 0.08, filterType: 'lowpass', delay: 0.18 });
+    },
+    duelWin() {
+      tone({ frequency: 523, toFrequency: 1046, duration: 0.3, gain: 0.09, type: 'triangle' });
+      tone({ frequency: 784, duration: 0.22, gain: 0.06, type: 'sine', delay: 0.1 });
+      noise({ frequency: 2400, duration: 0.1, gain: 0.06, filterType: 'highpass', delay: 0.18 });
+    },
+    duelLose() {
+      tone({ frequency: 196, toFrequency: 98, duration: 0.4, gain: 0.1, type: 'sawtooth' });
+      noise({ frequency: 300, duration: 0.25, gain: 0.08, filterType: 'lowpass', delay: 0.1 });
     }
   };
 

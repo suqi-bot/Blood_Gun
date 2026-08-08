@@ -350,6 +350,24 @@
       <div class="duel-result" id="duel-result"></div>
     </div>
 
+    <!-- 生死弹：秘密选择生/死 -->
+    <div id="lifedeath-modal" class="modal hidden">
+      <div class="modal-content compact-modal">
+        <div class="modal-kicker">LIFE OR DEATH / SECRET</div>
+        <h2>选择生死弹效果</h2>
+        <p class="screen-intro">你的选择对对手保密。压入子弹后把枪交给对手，由对手选择射击目标——被射中者将按你的选择回复或损失 1 点生命。</p>
+        <div class="lifedeath-options">
+          <button id="btn-lifedeath-life" class="btn btn-lifedeath life">
+            <span class="lifedeath-glyph">☯</span>生<small>被射中者回复 1 HP</small>
+          </button>
+          <button id="btn-lifedeath-death" class="btn btn-lifedeath death">
+            <span class="lifedeath-glyph">✕</span>死<small>被射中者损失 1 HP</small>
+          </button>
+        </div>
+        <button id="btn-lifedeath-cancel" class="btn btn-secondary">取消</button>
+      </div>
+    </div>
+
     <!-- 看破结果弹窗 -->
     <div id="peek-modal" class="modal hidden">
       <div class="modal-content compact-modal">

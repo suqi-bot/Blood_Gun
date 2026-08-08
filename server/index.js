@@ -100,8 +100,8 @@ const rooms = new Map();
 
 // 游戏逻辑
 const ITEM_TYPES = ['peek', 'shield', 'eject', 'power'];
-const GAMBLE_ITEM_TYPES = ['peek', 'shield', 'eject', 'power', 'duel', 'persona']; // 赌局抽取池（对决/人格面具卡片）
-const ITEM_NAMES = { peek: '看破', shield: '护盾', eject: '退蛋', power: '双倍威力', duel: '对决', persona: '人格面具', orpheus: '俄耳甫斯' };
+const GAMBLE_ITEM_TYPES = ['peek', 'shield', 'eject', 'power', 'duel', 'persona', 'lifedeath']; // 赌局抽取池（对决/人格面具/生死弹卡片）
+const ITEM_NAMES = { peek: '看破', shield: '护盾', eject: '退蛋', power: '双倍威力', duel: '对决', persona: '人格面具', orpheus: '俄耳甫斯', lifedeath: '生死弹' };
 
 class GameRoom {
   constructor(roomId) {
@@ -110,6 +110,7 @@ class GameRoom {
     this.players = [];
     this.duel = null; // 对决状态
     this.duelTimer = null; // 对决超时定时器
+    this.lifeDeath = null; // 生死弹：{ user, effect } 效果对对手保密
     this.state = 'waiting'; // waiting, playing, finished
     this.bullets = [];
     this.totalBullets = 6;
@@ -162,6 +163,7 @@ class GameRoom {
 
     // 重新装填子弹（赌局模式装填后触发抽道具）
     this.duel = null;
+    this.lifeDeath = null;
     if (this.duelTimer) {
       clearTimeout(this.duelTimer);
       this.duelTimer = null;
@@ -175,7 +177,7 @@ class GameRoom {
     this.broadcastState('game_start', this.getAmmoCounts());
   }
 
-  // 赌局模式：为某玩家抽取 2 个不同的新道具（相同不可叠加，卡槽满则无法抽取）
+  // 赌局模式：为某玩家抽取 2 个新道具（可重复；最多持有 4 张，超出不再抽取）
   drawGambleItems(playerIndex) {
     if (this.mode !== 'gamble') return;
     const items = this.playerItems[playerIndex];
@@ -188,14 +190,15 @@ class GameRoom {
     const name = (this.players[playerIndex] && this.players[playerIndex].playerName) || '玩家';
     let drawn = 0;
     types.forEach((t) => {
-      if (drawn >= 2 || items.indexOf(t) !== -1) return;
+      if (drawn >= 2) return;
+      if (items.length >= 4) return; // 最多 4 张，超出不再抽取
       items.push(t);
       this.gambleDrawn[playerIndex].push(t);
       drawn++;
       this.gameLog.push(`${name} 抽到了【${ITEM_NAMES[t]}】`);
     });
     if (drawn === 0) {
-      this.gameLog.push(`${name} 卡槽已满，无法抽取道具`);
+      this.gameLog.push(`${name} 卡槽已满（4 张），无法抽取道具`);
     }
   }
 
@@ -214,6 +217,7 @@ class GameRoom {
     }
     this.currentBulletIndex = 0;
     this.totalBullets = total;
+    this.lifeDeath = null; // 换弹清空未结算的生死弹
 
     // 赌局模式：每次换弹双方各抽取 2 个道具
     if (this.mode === 'gamble' && this.playerItems[0] && this.playerItems[1]) {
@@ -227,7 +231,8 @@ class GameRoom {
 
   getAmmoCounts() {
     const live = this.bullets.filter(b => b === 1).length;
-    return { ammoLive: live, ammoEmpty: this.bullets.length - live };
+    const empty = this.bullets.filter(b => b === 0).length;
+    return { ammoLive: live, ammoEmpty: empty };
   }
 
   buildItems(counts) {
@@ -246,6 +251,63 @@ class GameRoom {
     if (this.state !== 'playing') return;
     if (this.duel && this.duel.active) return;
     if (playerIndex !== this.currentPlayer) return;
+
+    // 生死弹：出牌者压入子弹后枪交给对手，对手必须射击（自行选择目标，不知效果）
+    if (this.lifeDeath && this.lifeDeath.user !== playerIndex) {
+      const ld = this.lifeDeath;
+      this.lifeDeath = null;
+      const bullet = this.bullets[this.currentBulletIndex];
+      this.currentBulletIndex++;
+
+      const atSelf = target === 'self';
+      const victim = atSelf ? playerIndex : 1 - playerIndex;
+      const name = this.players[playerIndex].playerName;
+      let result;
+
+      if (!aimed) {
+        // 未瞄准：生死弹打偏，效果落空
+        result = { type: 'miss_aim', shooter: playerIndex, target: target || null, bullet: 'lifedeath' };
+        this.gameLog.push(`${name} 没有瞄准，生死弹打偏了！效果落空`);
+      } else if (ld.effect === 'life') {
+        // 生：被射中者回复 1 点生命（不超过上限）
+        const before = this.playerHealth[victim];
+        this.playerHealth[victim] = Math.min(this.startHealth, this.playerHealth[victim] + 1);
+        const healed = this.playerHealth[victim] - before;
+        result = { type: 'lifedeath', shooter: playerIndex, target, victim, effect: 'life', amount: healed, damage: 0 };
+        this.gameLog.push(`${name} 射出生死弹【生】！${this.players[victim].playerName} 回复 ${healed} 点生命`);
+      } else {
+        // 死：被射中者损失 1 点生命
+        this.playerHealth[victim] -= 1;
+        result = { type: 'lifedeath', shooter: playerIndex, target, victim, effect: 'death', amount: 1, damage: 1 };
+        this.gameLog.push(`${name} 射出生死弹【死】！${this.players[victim].playerName} 受到 1 点伤害`);
+      }
+
+      this.currentPlayer = ld.user; // 回合回到出牌者
+      this.powerActive[playerIndex] = false;
+
+      // 检查游戏是否结束（优先：子弹刚好打空又有人死亡，直接结算，不再装填过回合）
+      if (this.playerHealth[0] <= 0 || this.playerHealth[1] <= 0) {
+        this.state = 'finished';
+        const winner = this.playerHealth[0] <= 0 ? 1 : 0;
+        result.gameOver = true;
+        result.winner = winner;
+        this.gameLog.push(`游戏结束！${this.players[winner].playerName} 获胜！`);
+      } else {
+        // 子弹打完进入下一循环：重新装填
+        if (this.currentBulletIndex >= this.bullets.length) {
+          this.reloadBullets();
+          result.reloaded = true;
+          Object.assign(result, this.getAmmoCounts());
+          this.gameLog.push('子弹已打完，重新装填！');
+        }
+        result.nextPlayer = this.currentPlayer;
+      }
+
+      this.lastActivity = Date.now();
+      result.detail = result.type;
+      this.broadcastState('shoot', result);
+      return result;
+    }
 
     // 人格面具：记录本次开枪时是否生效（本回合内必须对自己射击一次）
     const personaShot = this.personaPending[playerIndex];
@@ -376,9 +438,10 @@ class GameRoom {
   }
 
   // 使用道具
-  useItem(playerIndex, itemType) {
+  useItem(playerIndex, itemType, itemEffect) {
     if (this.state !== 'playing') return null;
     if (this.duel && this.duel.active) return null;
+    if (this.lifeDeath) return null; // 生死弹已上膛，对手必须射击，不能使用道具
     if (playerIndex !== this.currentPlayer) return null;
 
     const itemIndex = this.playerItems[playerIndex].indexOf(itemType);
@@ -443,6 +506,18 @@ class GameRoom {
         result = { type: 'orpheus', shooter: playerIndex };
         this.gameLog.push(`${this.players[playerIndex].playerName} 使用俄耳甫斯，可以连续行动两个回合！`);
         break;
+
+      case 'lifedeath':
+        // 生死弹：秘密选择生/死（对手不知），压入一颗生死子弹并把枪交给对手
+        const ldEffect = itemEffect === 'death' ? 'death' : 'life';
+        this.lifeDeath = { user: playerIndex, effect: ldEffect };
+        this.bullets.splice(this.currentBulletIndex, 0, 2); // 压入生死子弹（值 2），下一发必射它
+        this.totalBullets = this.bullets.length;
+        this.currentPlayer = 1 - playerIndex; // 枪交给对手
+        this.powerActive[playerIndex] = false;
+        result = { type: 'lifedeath', shooter: playerIndex };
+        this.gameLog.push(`${this.players[playerIndex].playerName} 使用了生死弹，压入一颗子弹并把枪交给了对手！`);
+        break;
     }
 
     this.lastActivity = Date.now();
@@ -483,7 +558,7 @@ class GameRoom {
     }, endAt - Date.now() + 300);
     this.gameLog.push('对决开始：倒计时 3 秒，等待射击信号 3~10 秒！');
     this.lastActivity = Date.now();
-    this.broadcastState('duel_start', { duelUser: playerIndex, readyAt, fireAt, endAt: this.duel.endAt });
+    this.broadcastState('duel_start', { duelUser: playerIndex, readyAt, fireAt, endAt: this.duel.endAt, serverTime: Date.now() });
     return true;
   }
 
@@ -562,6 +637,7 @@ class GameRoom {
       startHealth: this.startHealth,
       bulletsRemaining: this.totalBullets - this.currentBulletIndex,
       gambleDrawn: this.mode === 'gamble' && this.gambleDrawn ? this.gambleDrawn : null,
+      lifeDeathPending: !!this.lifeDeath,
       gameLog: this.gameLog.slice(-10), // 只发送最近10条
       ...extra,
       type: event
@@ -682,7 +758,7 @@ wss.on('connection', (ws) => {
 
         case 'use_item':
           if (currentRoom && playerIndex >= 0) {
-            currentRoom.useItem(playerIndex, data.item);
+            currentRoom.useItem(playerIndex, data.item, data.effect);
           }
           break;
 

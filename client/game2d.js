@@ -444,6 +444,9 @@
     } else if (state.canPickup && gun.phase === 'held' && gun.holder === ME) {
       // 同回合重新装填后：枪回到桌面等待拿起
       goToTable(0.45);
+    } else if (state.gameActive && state.currentPlayer !== state.myIndex && (gun.phase === 'table' || gun.phase === 'toTable')) {
+      // 装填动画结束后枪回到桌面，但轮到对手：把枪交给对手（否则会显示对手没拿枪却开枪）
+      goToOpponent();
     }
     updateHint();
   }
@@ -562,10 +565,35 @@
   function flashBody(type) {
     const flash = document.getElementById('hit-flash');
     if (!flash) return;
-    flash.classList.remove('red', 'cyan');
+    flash.classList.remove('red', 'cyan', 'gold');
     void flash.offsetWidth;
     flash.classList.add(type, 'active');
     setTimeout(function () { flash.classList.remove('active'); }, 420);
+  }
+
+  // 对决结算效果：胜利金色闪屏 + 震动 + 粒子；失败红色闪屏 + 震动 + 粒子
+  function duelResult(type) {
+    if (type === 'win') {
+      flashBody('gold');
+      shake = { t: 0.75, amt: 8 };
+      addBurst(p0.x, p0.y, '#ffd700', 20);
+      addRing(p0.x, p0.y, [255, 215, 90], 52 * s, 0.55);
+      addEffect('damageText', p0.x, p0.y - 42 * s, 0.8, { label: '对决胜利', color: '#ffd700' });
+      window.GameAudio?.play('duelWin');
+    } else if (type === 'lose') {
+      flashBody('red');
+      shake = { t: 0.8, amt: 12 };
+      addBurst(p0.x, p0.y, '#ff3b28', 18);
+      addRing(p0.x, p0.y, [255, 59, 40], 50 * s, 0.5);
+      addEffect('damageText', p0.x, p0.y - 42 * s, 0.85, { label: '对决失败', color: '#ff8069' });
+      playerFlash[ME] = 0.4;
+      window.GameAudio?.play('duelLose');
+    } else {
+      // 平局 / 提前开火
+      flashBody('cyan');
+      shake = { t: 0.45, amt: 6 };
+      window.GameAudio?.play('dry');
+    }
   }
 
   function setScreen(id) {
@@ -946,7 +974,8 @@
     ctx.globalAlpha = dead ? 0.45 : 1;
     ctx.save();
     ctx.translate(p.x, p.y);
-    ctx.rotate(isMe ? 0 : Math.PI);
+    // 敌人与玩家同方向绘制（贴图已统一朝向，不再旋转 180°）
+    ctx.rotate(0);
 
     if (!drawAsset(isMe ? 'player0' : 'player1', 0, 0, 86 * s, 86 * s)) {
 
@@ -1534,6 +1563,7 @@
     item: triggerItem,
     setScreen: setScreen,
     outcome: reportOutcome,
+    duelResult: duelResult,
     setAssetSkin: setAssetSkin,
     setOpponentSkin: setOpponentSkin,
     onPickup: null,

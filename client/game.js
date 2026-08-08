@@ -27,12 +27,14 @@ const GameState = {
   duelPhase: null, // 'countdown' | 'showdown'
   duelUser: -1,
   personaPending: false, // 人格面具：本回合必须对自己射击
+  lifeDeathPending: false, // 生死弹已上膛：对手必须开枪，不能使用道具
 
   // 单人模式AI相关
   aiItems: [],
   aiShieldUsed: false,
   roomList: [],
-  roomListTimer: null
+  roomListTimer: null,
+  turnDelayUntil: 0 // 回合切换后锁定操作的时间戳（预留 3 秒）
 };
 
 // 单人模式游戏逻辑
@@ -50,6 +52,7 @@ const SinglePlayerGame = {
     GameState.selectedItems = [];
     GameState.gameActive = true;
     GameState.gunPicked = false;
+    GameState.turnDelayUntil = 0;
 
     // 生成子弹
     this.reloadBullets();
@@ -93,11 +96,14 @@ const SinglePlayerGame = {
     return { live, empty: GameState.totalBullets - live };
   },
 
-  // 装填展示结束后继续回合流程
+  // 装填展示结束后继续回合流程（换弹前预留 3 秒）
   continueAfterReload(needReload) {
     if (needReload) {
-      const counts = this.getAmmoCounts();
-      showAmmoReveal(counts.live, counts.empty, () => this.beginNextTurn());
+      const waitMs = Math.max(0, GameState.turnDelayUntil - Date.now());
+      setTimeout(() => {
+        const counts = this.getAmmoCounts();
+        showAmmoReveal(counts.live, counts.empty, () => this.beginNextTurn());
+      }, waitMs);
     } else {
       this.beginNextTurn();
     }
@@ -196,11 +202,12 @@ const SinglePlayerGame = {
       this.addLog(winner === 0 ? '你获胜了！' : 'AI获胜了！');
       setTimeout(() => showResult(winner === 0), 1500);
     } else {
-      // 子弹打完进入下一循环：重新装填
+      // 子弹打完进入下一循环：重新装填（换弹前预留 3 秒）
       const needReload = GameState.currentBulletIndex >= GameState.totalBullets;
       if (needReload) {
         this.reloadBullets();
         this.addLog('子弹已打完，重新装填！');
+        GameState.turnDelayUntil = Date.now() + 3000;
       }
       this.continueAfterReload(needReload);
     }
@@ -265,11 +272,12 @@ const SinglePlayerGame = {
         showToast(ejectedLive ? '退出一发实弹！' : '退出一发空弹！');
         GameState.currentPlayer = 0;
 
-        // 子弹打完进入下一循环：重新装填
+        // 子弹打完进入下一循环：重新装填（换弹前预留 3 秒）
         const needReload = GameState.currentBulletIndex >= GameState.totalBullets;
         if (needReload) {
           this.reloadBullets();
           this.addLog('子弹已打完，重新装填！');
+          GameState.turnDelayUntil = Date.now() + 3000;
         }
 
         window.Game2D?.outcome?.({
@@ -409,11 +417,12 @@ const SinglePlayerGame = {
         showToast('AI使用了退蛋');
         GameState.currentPlayer = 1;
 
-        // 子弹打完进入下一循环：重新装填
+        // 子弹打完进入下一循环：重新装填（换弹前预留 3 秒）
         const needReload = GameState.currentBulletIndex >= GameState.totalBullets;
         if (needReload) {
           this.reloadBullets();
           this.addLog('子弹已打完，重新装填！');
+          GameState.turnDelayUntil = Date.now() + 3000;
         }
 
         window.Game2D?.outcome?.({
@@ -492,11 +501,12 @@ const SinglePlayerGame = {
       this.addLog(winner === 0 ? '你获胜了！' : 'AI获胜了！');
       setTimeout(() => showResult(winner === 0), 1500);
     } else {
-      // 子弹打完进入下一循环：重新装填
+      // 子弹打完进入下一循环：重新装填（换弹前预留 3 秒）
       const needReload = GameState.currentBulletIndex >= GameState.totalBullets;
       if (needReload) {
         this.reloadBullets();
         this.addLog('子弹已打完，重新装填！');
+        GameState.turnDelayUntil = Date.now() + 3000;
       }
       this.continueAfterReload(needReload);
     }
@@ -722,6 +732,7 @@ const MultiPlayerGame = {
 
       case 'game_start':
         GameState.gameActive = true;
+        GameState.turnDelayUntil = 0;
         this.stopRoomListPolling();
         showScreen('game-screen');
         // 以服务器权威 playerIndex 兜底，避免 room_joined 未设置时双方都显示"对手的回合"
@@ -753,6 +764,15 @@ const MultiPlayerGame = {
             showToast('空弹！获得【俄耳甫斯】');
           } else if (data.orpheusBlocked) {
             showToast('空弹！但卡槽已满，无法获得俄耳甫斯');
+          } else if (data.detail === 'lifedeath') {
+            // 生死弹结算：效果公开
+            const victimMe = data.victim === GameState.playerIndex;
+            const who = victimMe ? '你' : '对手';
+            if (data.effect === 'life') {
+              showToast(`生死弹【生】：${who} 回复 ${data.amount} HP`);
+            } else {
+              showToast(`生死弹【死】：${who} 受到 ${data.amount} 点伤害`);
+            }
           }
         } else {
           // 使用道具
@@ -765,6 +785,11 @@ const MultiPlayerGame = {
             }
           } else if (data.detail === 'orpheus') {
             showToast(data.shooter === GameState.playerIndex ? '俄耳甫斯：连续行动两个回合！' : '对手使用了俄耳甫斯');
+          } else if (data.detail === 'lifedeath') {
+            // 生死弹：效果保密，只有出牌者知道生/死
+            showToast(data.shooter === GameState.playerIndex
+              ? '生死弹已压入枪膛，效果保密！对手必须开枪'
+              : '对手使用了生死弹！你必须开枪（效果未知）');
           } else if (data.detail === 'peek' || data.detail === 'power' || data.detail === 'shield') {
             window.GameAudio?.play(data.detail);
           }
@@ -774,7 +799,7 @@ const MultiPlayerGame = {
           shooterIsPlayer: data.shooter === GameState.playerIndex,
           target: data.type === 'shoot' ? data.target : 'self',
           aimed: data.detail !== 'miss_aim',
-          hit: data.detail === 'hit' || data.hit === true,
+          hit: data.detail === 'hit' || data.hit === true || (data.detail === 'lifedeath' && data.effect === 'death'),
           shield: data.detail === 'shield_block' || data.shield === true,
           damage: Number(data.damage) || 0,
           eject: data.detail === 'eject',
@@ -790,14 +815,18 @@ const MultiPlayerGame = {
         }
 
         if (data.reloaded && !data.gameOver) {
-          // 赌局模式：装完子弹后进入抽取道具环节
-          if (GameState.gameMode === 'gamble') {
-            showAmmoReveal(data.ammoLive, data.ammoEmpty, () => {
-              showGambleDraw(data.gambleDrawn && data.gambleDrawn[GameState.playerIndex], null);
-            });
-          } else {
-            showAmmoReveal(data.ammoLive, data.ammoEmpty);
-          }
+          // 换弹前预留 3 秒，再进入装填动画
+          const waitMs = Math.max(0, GameState.turnDelayUntil - Date.now());
+          setTimeout(() => {
+            // 赌局模式：装完子弹后进入抽取道具环节
+            if (GameState.gameMode === 'gamble') {
+              showAmmoReveal(data.ammoLive, data.ammoEmpty, () => {
+                showGambleDraw(data.gambleDrawn && data.gambleDrawn[GameState.playerIndex], null);
+              });
+            } else {
+              showAmmoReveal(data.ammoLive, data.ammoEmpty);
+            }
+          }, waitMs);
         }
 
         if (data.gameOver) {
@@ -807,6 +836,7 @@ const MultiPlayerGame = {
 
       case 'duel_start':
         this.updateFromServer(data);
+        GameState.serverClockOffset = Number.isFinite(data.serverTime) ? data.serverTime - Date.now() : 0;
         startDuelUI(data.duelUser, data.readyAt, data.fireAt, data.endAt);
         break;
 
@@ -849,6 +879,11 @@ const MultiPlayerGame = {
       GameState.playerIndex = data.playerIndex;
     }
     GameState.currentPlayer = data.currentPlayer;
+
+    // 换弹回合（联机）：进入装填前预留 3 秒
+    if (data.reloaded && GameState.gameActive && !data.gameOver) {
+      GameState.turnDelayUntil = Date.now() + 3000;
+    }
     GameState.playerHealth = data.playerHealth;
     GameState.playerItems = data.playerItems;
     GameState.shieldUsed = data.shieldUsed;
@@ -867,6 +902,7 @@ const MultiPlayerGame = {
       });
     }
     GameState.bulletsRemaining = data.bulletsRemaining;
+    GameState.lifeDeathPending = !!data.lifeDeathPending;
     if (Number.isFinite(data.ammoLive) && Number.isFinite(data.ammoEmpty)) {
       GameState.totalBullets = data.ammoLive + data.ammoEmpty;
       GameState.currentBulletIndex = 0;
@@ -892,12 +928,14 @@ const MultiPlayerGame = {
   },
 
   // 使用道具
-  useItem(itemType) {
+  useItem(itemType, effect) {
     if (!GameState.gameActive || GameState.revealingAmmo || !GameState.isMyTurn) return;
+    if (GameState.lifeDeathPending) return; // 生死弹已上膛，只能开枪
 
     GameState.ws.send(JSON.stringify({
       type: 'use_item',
-      item: itemType
+      item: itemType,
+      effect: effect || null
     }));
   },
 
@@ -957,7 +995,17 @@ function updateGameUI() {
   // 更新回合指示
   const turnText = document.getElementById('turn-text');
   const isMyTurn = isSingle ? GameState.currentPlayer === 0 : GameState.isMyTurn;
-  if (isSingle) {
+
+  // 回合切换预留 3 秒：锁定操作并显示倒计时
+  const delayLeft = GameState.turnDelayUntil - Date.now();
+  const turnLocked = delayLeft > 0 && GameState.gameActive;
+  if (turnLocked) {
+    turnText.textContent = `准备换弹 · ${Math.max(1, Math.ceil(delayLeft / 1000))}s`;
+  } else if (GameState.lifeDeathPending && isMyTurn) {
+    turnText.textContent = '生死弹已上膛 · 必须开枪！';
+  } else if (GameState.lifeDeathPending) {
+    turnText.textContent = '等待对手开枪…';
+  } else if (isSingle) {
     turnText.textContent = GameState.currentPlayer === 0 ? (GameState.gunPicked ? '你的回合' : '你的回合 · 拿起枪') : 'AI的回合';
   } else {
     turnText.textContent = GameState.isMyTurn ? (GameState.gunPicked ? '你的回合' : '你的回合 · 拿起枪') : '对手的回合';
@@ -965,10 +1013,16 @@ function updateGameUI() {
 
   document.getElementById('bullets-remaining').textContent = `剩余: ${GameState.bulletsRemaining}`;
 
-  // 操作权限：先拿起枪，才能开枪 / 用道具（对决期间全部锁定）
-  const canAct = isMyTurn && !GameState.revealingAmmo && GameState.gameActive && !GameState.duelActive;
+  // 操作权限：先拿起枪，才能开枪 / 用道具（对决期间全部锁定；生死弹上膛期间锁定道具但必须开枪）
+  const canAct = isMyTurn && !GameState.revealingAmmo && GameState.gameActive && !GameState.duelActive && !turnLocked;
   if (!canAct) GameState.gunPicked = false;
   const canShoot = canAct && GameState.gunPicked;
+  const canUseItems = canShoot && !GameState.lifeDeathPending;
+
+  // 倒计时期间定时刷新（解锁后恢复显示正常回合文案）
+  if (turnLocked) {
+    setTimeout(updateGameUI, 250);
+  }
 
   // 更新道具栏（动态渲染，按槽位 1-4 依次填充）：
   // 普通模式：4 类固定顺序，显示数量徽章；赌局模式：按获得顺序从左到右填入空槽
@@ -985,8 +1039,8 @@ function updateGameUI() {
       const count = isGamble ? 1 : myItemsArr.filter(item => item === type).length;
       const has = count > 0;
       const cls = ['item-slot'];
-      if (has && canShoot) cls.push('available');
-      if (has && !canShoot) cls.push('locked');
+      if (has && canUseItems) cls.push('available');
+      if (has && !canUseItems) cls.push('locked');
       if (!has) cls.push('empty');
       const meta = ITEM_META[type] || {};
       const inner = has
@@ -1136,7 +1190,8 @@ const ITEM_META = {
   eject: { name: '退蛋', icon: '⏏', en: 'EJECT', desc: '退蛋：退出一发子弹' },
   duel: { name: '对决', icon: '⚔', en: 'DUEL', desc: '对决：进入 3~10 秒对峙，先开枪者胜' },
   persona: { name: '人格面具', icon: '◐', en: 'PERSONA', desc: '人格面具：本回合内对自己射击，空弹获得俄耳甫斯（否则失效）' },
-  orpheus: { name: '俄耳甫斯', icon: '♪', en: 'ORPHEUS', desc: '俄耳甫斯：连续行动两个回合' }
+  orpheus: { name: '俄耳甫斯', icon: '♪', en: 'ORPHEUS', desc: '俄耳甫斯：连续行动两个回合' },
+  lifedeath: { name: '生死弹', icon: '☯', en: 'LIFE/DEATH', desc: '生死弹：秘密选择生/死并压入子弹，把枪交给对手；对手不知效果自行选择目标，被射中者回复或损失 1 点生命' }
 };
 
 // 赌局模式：抽取道具环节（装完子弹后展示，按槽位 1-4 依次放入）
@@ -1154,14 +1209,19 @@ function showGambleDraw(drawnItems, callback) {
   const current = Array.isArray(GameState.playerItems[GameState.playerIndex])
     ? GameState.playerItems[GameState.playerIndex]
     : [];
-  // 已有道具（抽卡前）保持原顺序，本轮新抽的依次排到后面 → 与卡槽 1-4 顺序一致
-  const order = current.filter(t => drawn.indexOf(t) === -1).concat(drawn);
+  // 按卡槽 1-4 顺序展示当前全部卡片（相同卡片可重复占槽）；本轮抽到的类型翻牌展示
+  const order = current.slice(0, 4);
+  const seenCount = {};
   cardsEl.innerHTML = '';
   if (msgEl) msgEl.textContent = '';
 
   order.forEach((type) => {
     const meta = ITEM_META[type] || {};
-    const isNew = drawn.indexOf(type) !== -1;
+    // 已有数量 = 当前持有数 - 本轮新抽数（允许重复，按槽位顺序区分新旧）
+    const already = Math.max(0, (current.filter(x => x === type).length) - (drawn.filter(x => x === type).length));
+    const shown = seenCount[type] || 0;
+    const isNew = shown >= already;
+    seenCount[type] = shown + 1;
     const div = document.createElement('div');
     div.className = 'draw-card' + (isNew ? '' : ' existing');
     div.innerHTML = `
@@ -1222,7 +1282,7 @@ function startDuelUI(duelUser, readyAt, fireAt, endAt) {
   if (duelAnimFrame) cancelAnimationFrame(duelAnimFrame);
 
   const tick = () => {
-    const now = Date.now();
+    const now = Date.now() + (GameState.serverClockOffset || 0);
     if (now < readyAt) {
       GameState.duelPhase = 'countdown';
       const sec = Math.max(1, Math.ceil((readyAt - now) / 1000));
@@ -1283,16 +1343,28 @@ function endDuelUI(data) {
   overlay.classList.add('result');
 
   if (data && data.timeout) {
-    if (result) result.textContent = '僵持不下 · 平局';
+    if (result) {
+      result.textContent = '僵持不下 · 平局';
+      result.className = 'duel-result draw';
+    }
+    window.Game2D?.duelResult?.('draw');
   } else if (data && data.earlyFire) {
     const self = data.loser === GameState.playerIndex;
-    if (result) result.textContent = self ? `提前开火！自己 -${data.damage} HP` : '对手提前开火！';
+    if (result) {
+      result.textContent = self ? `提前开火！自己 -${data.damage} HP` : '对手提前开火！';
+      result.className = 'duel-result ' + (self ? 'lose' : 'win');
+    }
+    window.Game2D?.duelResult?.(self ? 'lose' : 'win');
   } else if (data) {
     const win = data.winner === GameState.playerIndex;
-    if (result) result.textContent = win ? `对决胜利！-${data.damage} HP` : `对决失败 · -${data.damage} HP`;
+    if (result) {
+      result.textContent = win ? `对决胜利！-${data.damage} HP` : `对决失败 · -${data.damage} HP`;
+      result.className = 'duel-result ' + (win ? 'win' : 'lose');
+    }
+    window.Game2D?.duelResult?.(win ? 'win' : 'lose');
   }
 
-  const delay = data && data.gameOver ? 2400 : 1600;
+  const delay = data && data.gameOver ? 1500 : 900;
   setTimeout(() => {
     overlay.classList.add('hidden');
     // 强制恢复对局状态：枪回桌面、UI 解锁
@@ -1680,11 +1752,35 @@ function bindEvents() {
         showToast('先拿起桌上的枪！');
         return;
       }
+      if (itemType === 'lifedeath') {
+        // 生死弹：先秘密选择生/死，再发送使用
+        GameState.pendingLifeDeath = null;
+        document.getElementById('lifedeath-modal').classList.remove('hidden');
+        return;
+      }
       if (GameState.mode === 'single') {
         SinglePlayerGame.useItem(itemType);
       } else {
         MultiPlayerGame.useItem(itemType);
       }
+    });
+  }
+
+  // 生死弹：选择效果（生 = 被射中者回复 1 HP，死 = 被射中者损失 1 HP；选择对对手保密）
+  const confirmLifeDeath = (effect) => {
+    document.getElementById('lifedeath-modal').classList.add('hidden');
+    if (GameState.mode === 'single') return;
+    GameState.pendingLifeDeath = effect;
+    MultiPlayerGame.useItem('lifedeath', effect);
+  };
+  const btnLifeDeathLife = document.getElementById('btn-lifedeath-life');
+  const btnLifeDeathDeath = document.getElementById('btn-lifedeath-death');
+  const btnCancelLifeDeath = document.getElementById('btn-lifedeath-cancel');
+  if (btnLifeDeathLife) btnLifeDeathLife.addEventListener('click', () => confirmLifeDeath('life'));
+  if (btnLifeDeathDeath) btnLifeDeathDeath.addEventListener('click', () => confirmLifeDeath('death'));
+  if (btnCancelLifeDeath) {
+    btnCancelLifeDeath.addEventListener('click', () => {
+      document.getElementById('lifedeath-modal').classList.add('hidden');
     });
   }
 

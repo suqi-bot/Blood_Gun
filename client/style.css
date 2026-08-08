@@ -2134,6 +2134,49 @@ input:focus-visible,
   text-shadow: 0 0 25px rgba(133, 217, 202, 0.4);
 }
 
+.lifedeath-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.9rem;
+  margin: 0.4rem 0;
+}
+
+.lifedeath-options .btn {
+  flex-direction: column;
+  min-width: 0;
+  gap: 0.35rem;
+  padding: 1.1rem 0.8rem;
+}
+
+.lifedeath-options .btn small {
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  opacity: 0.75;
+}
+
+.lifedeath-options .btn.life {
+  color: #10251d;
+  background: linear-gradient(135deg, #67d9a8, #2e9e6e);
+  border-color: rgba(126, 240, 194, 0.75);
+  box-shadow: 0 10px 30px rgba(46, 158, 110, 0.25);
+}
+
+.lifedeath-options .btn.death {
+  color: #1c0e0c;
+  background: linear-gradient(135deg, #f08a6e, #c13d2d);
+  border-color: rgba(255, 158, 130, 0.75);
+  box-shadow: 0 10px 30px rgba(193, 61, 45, 0.28);
+}
+
+.lifedeath-glyph {
+  font-size: 1.4rem;
+  line-height: 1;
+}
+
+.lifedeath-options .btn small {
+  font-weight: 600;
+}
+
 .ammo-content {
   width: min(92vw, 540px);
   text-align: center;
@@ -2704,6 +2747,10 @@ body.game-active .scene-2d {
 
 #hit-flash.cyan {
   background: radial-gradient(ellipse at center, rgba(98, 217, 202, 0.42), rgba(98, 217, 202, 0.2) 45%, transparent 72%);
+}
+
+#hit-flash.gold {
+  background: radial-gradient(ellipse at center, rgba(255, 214, 90, 0.55), rgba(255, 190, 60, 0.28) 45%, transparent 72%);
 }
 
 #hit-flash.active {
@@ -3398,6 +3445,43 @@ body.game-active .scene-2d {
   font-weight: 700;
   letter-spacing: 0.18em;
   text-shadow: 0 0 22px rgba(240, 201, 120, 0.45);
+}
+
+/* 对决结算：遮罩变透明，让画布闪屏/震动/粒子透出，文字放大闪动 */
+.duel-overlay.result {
+  background: rgba(3, 5, 6, 0.12);
+  animation: duelResultShake 0.5s ease-out;
+}
+
+@keyframes duelResultShake {
+  0% { transform: translate(0, 0); }
+  15% { transform: translate(-9px, 5px); }
+  30% { transform: translate(8px, -6px); }
+  45% { transform: translate(-6px, -4px); }
+  60% { transform: translate(5px, 3px); }
+  75% { transform: translate(-3px, 2px); }
+  100% { transform: translate(0, 0); }
+}
+
+.duel-overlay.result .duel-result {
+  font-size: 2.1rem;
+  animation: duelResultPop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.duel-overlay.result .duel-result.win {
+  color: #ffd700;
+  text-shadow: 0 0 34px rgba(255, 215, 90, 0.85), 0 0 70px rgba(255, 190, 60, 0.4);
+}
+
+.duel-overlay.result .duel-result.lose {
+  color: #ff4a35;
+  text-shadow: 0 0 34px rgba(255, 74, 53, 0.85), 0 0 70px rgba(255, 40, 20, 0.4);
+}
+
+@keyframes duelResultPop {
+  0% { transform: scale(0.3); opacity: 0; }
+  60% { transform: scale(1.25); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
 }
 
 /* 对决等待阶段（射击信号未开放） */
